@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>75 Hard (Holy) Tracker</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1f2933;--mute:#6b7280;--line:#e5e1d8;--accent:#8a5a2b;--ok:#2f855a;--okbg:#e3f4ea;--bad:#c53030;--badbg:#fde8e8;--warn:#b7791f;--warnbg:#fdf3dc;--rest:#4a6fa5;--restbg:#e4ecf7;
+color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17181b;--card:#222428;--ink:#ecebe7;--mute:#9aa0a8;--line:#34373d;--accent:#d9a066;--ok:#68d391;--okbg:#1d3a2b;--bad:#fc8181;--badbg:#3f2224;--warn:#f6c96b;--warnbg:#3b3220;--rest:#8fb2e8;--restbg:#22304a;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#17181b;--card:#222428;--ink:#ecebe7;--mute:#9aa0a8;--line:#34373d;--accent:#d9a066;--ok:#68d391;--okbg:#1d3a2b;--bad:#fc8181;--badbg:#3f2224;--warn:#f6c96b;--warnbg:#3b3220;--rest:#8fb2e8;--restbg:#22304a;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Georgia,sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px 14px 60px}
+h1{font:700 26px Georgia,serif;margin:4px 0 2px}
+h2{font-size:18px;margin:0}
+.sub{color:var(--mute);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 12px}
+button.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+button.link{border:0;background:none;color:var(--accent);padding:4px 6px;text-decoration:underline}
+button.x{border:0;background:none;color:var(--mute);padding:2px 8px}
+input,select{border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 10px;width:100%}
+textarea{width:100%}
+.chip{display:inline-block;border-radius:999px;padding:3px 10px;font-size:13px;margin:3px 4px 0 0}
+.c-ok{background:var(--okbg);color:var(--ok)}.c-bad{background:var(--badbg);color:var(--bad)}.c-warn{background:var(--warnbg);color:var(--warn)}.c-rest{background:var(--restbg);color:var(--rest)}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:8px 0}
+.bar i{display:block;height:100%;background:var(--ok)}
+.member{cursor:pointer}
+.hab{display:flex;gap:12px;align-items:center;width:100%;text-align:left;padding:14px;margin:8px 0;border-radius:12px;font-size:16px}
+.box{flex:none;width:28px;height:28px;border-radius:8px;border:2px solid var(--line);display:grid;place-items:center;font-weight:700}
+.hab.on{background:var(--okbg);border-color:var(--ok)}.hab.on .box{background:var(--ok);border-color:var(--ok);color:#fff}
+.hab.rest{background:var(--restbg);border-color:var(--rest)}.hab.rest .box{background:var(--rest);border-color:var(--rest);color:#fff}
+.hab small{display:block;color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(15,1fr);gap:4px;margin-top:8px}
+.dot{aspect-ratio:1;border-radius:6px;background:var(--line);font-size:10px;display:grid;place-items:center;color:var(--mute);border:0;padding:0}
+.dot.ok{background:var(--ok);color:#fff}.dot.bad{background:var(--bad);color:#fff}.dot.today{outline:2px solid var(--accent)}
+.err{color:var(--bad)}
+.gap{display:grid;gap:8px}
+</style>
+</head>
+<body>
+<main id="app"><p class="sub">Loading…</p></main>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+const CORE=[
+ {id:'workout',label:'45-minute workout',kind:'workout'},
+ {id:'devotion',label:'Morning devotion, Scripture & prayer',kind:'daily'},
+ {id:'purity',label:'No porn, masturbation, or sex',kind:'daily'},
+ {id:'water',label:'A gallon of water',kind:'daily'},
+ {id:'grateful',label:'Write down 3 things you’re grateful for',kind:'daily'},
+ {id:'fast',label:'Nutritional fast',kind:'daily'}
+];
+let confirmId='',setOpen=false,db=null,cfg=null,members={},view='home',selDate=null,me='',ready=false,pending=false;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+try{me=localStorage.getItem('h75me')||''}catch(e){}
+const pad=n=>String(n).padStart(2,'0');
+const fmt=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const parse=s=>new Date(s+'T12:00:00');
+const today=()=>fmt(new Date());
+const addDays=(s,n)=>{const d=parse(s);d.setDate(d.getDate()+n);return fmt(d)};
+const idx=s=>Math.round((parse(s)-parse(cfg.start))/864e5);
+const nice=s=>parse(s).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+const uid=()=>'m'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+
+function habits(m){
+ const core=CORE.map(h=>h.id==='fast'?{...h,label:'Nutritional fast: '+(m.fast||'(set yours)')}:h);
+ return core.concat((m.custom||[]).map(c=>({id:c.id,label:c.label,kind:c.kind==='weekly'?'weekly':'daily',max:c.max||1,custom:true})));
+}
+const val=(m,h,d)=>((m.days||{})[d]||{})[h.id];
+function weekCount(m,h,d,upTo){
+ const i=idx(d),w=Math.floor(i/7);let n=0;
+ for(let k=w*7;k<=(upTo?i:w*7+6);k++){if(val(m,h,addDays(cfg.start,k))===true)n++}
+ return n;
+}
+function done(m,h,d){
+ const v=val(m,h,d);
+ if(h.kind==='workout')return v===true||v==='rest';
+ if(h.kind==='weekly')return !(v===true&&weekCount(m,h,d,true)>h.max);
+ return v===true;
+}
+const complete=(m,d)=>habits(m).every(h=>done(m,h,d));
+function stats(m){
+ const t=today(),ti=idx(t),last=Math.min(ti-1,cfg.length-1),missed=[];
+ for(let i=0;i<=last;i++){const d=addDays(cfg.start,i);if(!complete(m,d))missed.push(d)}
+ let streak=0;
+ for(let i=Math.min(ti,cfg.length-1);i>=0;i--){const d=addDays(cfg.start,i);
+  if(complete(m,d))streak++;else if(i===ti)continue;else break}
+ return{missed,streak,ti};
+}
+
+function render(){
+ if(!ready)return;
+ const a=$('#app');
+ if(!db){a.innerHTML='<h1>75 Hard (Holy)</h1><p class="err">The database isn’t connected yet. Paste your Firebase config into index.html (see setup steps).</p>';return}
+ if(!cfg){a.innerHTML=setupHtml();return}
+ a.innerHTML=view==='home'?homeHtml():memberHtml(view);
+}
+function setupHtml(){
+ return `<h1>75 Hard (Holy)</h1><p class="sub">Set up your group. This is saved for everyone.</p>
+ <div class="card gap">
+  <label>Group name<input id="s-name" value="Bible Study Guys"></label>
+  <label>Start date<input id="s-start" type="date" value="${today()}"></label>
+  <label>Number of days<input id="s-len" type="number" min="7" max="365" value="75"></label>
+  <label>Names (one per line)<textarea id="s-names" rows="6" placeholder="Danny&#10;Mike&#10;Chris" style="border:1px solid var(--line);background:var(--bg);color:inherit;border-radius:10px;padding:9px;font:inherit"></textarea></label>
+  <button class="pri" data-a="setup">Start the challenge</button>
+ </div>`;
+}
+function homeHtml(){
+ const t=today(),ti=idx(t),list=Object.entries(members).sort((a,b)=>(a[1].name||'').localeCompare(b[1].name||''));
+ let h=`<div class="row"><div><h1>${esc(cfg.name)}</h1><div class="sub">75 Hard (Holy) · ${ti<0?'Starts '+nice(cfg.start):ti>=cfg.length?'Challenge complete 🎉':'Day '+(ti+1)+' of '+cfg.length} · ${nice(t)}</div></div></div>`;
+ if(!list.length)h+='<div class="card sub">No names yet. Add some in Group settings below.</div>';
+ for(const [id,m] of list){
+  const s=stats(m),hs=habits(m),inRange=ti>=0&&ti<cfg.length;
+  const left=inRange?hs.filter(x=>!done(m,x,t)):[];
+  const n=hs.length-left.length;
+  h+=`<div class="card member" data-a="open" data-id="${id}">
+   <div class="row"><h2>${esc(m.name)}${id===me?' <span class="sub">(you)</span>':''}</h2>
+   <span class="chip ${s.missed.length?'c-bad':'c-ok'}">${s.missed.length?s.missed.length+' missed day'+(s.missed.length>1?'s':''):'Perfect so far'}</span></div>
+   ${inRange?`<div class="bar"><i style="width:${Math.round(n/hs.length*100)}%"></i></div>
+   <div>${left.length?`<span class="chip c-warn">${left.length} left today</span> <span class="sub">(${n}/${hs.length} done)</span>`:'<span class="chip c-ok">✅ All done today</span>'}</div>`:''}
+   ${s.missed.length?`<div class="sub" style="margin-top:6px">Missed: ${s.missed.map(nice).join(', ')}</div>`:''}
+   <div class="sub" style="margin-top:6px">🔥 Streak: ${s.streak} day${s.streak===1?'':'s'}</div></div>`;
+ }
+ h+=`<details class="card" ${setOpen?'open':''}><summary>Group settings</summary><div class="gap" style="margin-top:10px">
+  <div class="row"><input id="n-name" placeholder="Add a name" style="flex:1"><button class="pri" data-a="addmember">Add</button></div>
+  <label>Group name<input id="g-name" value="${esc(cfg.name)}"></label>
+  <label>Start date<input id="g-start" type="date" value="${cfg.start}"></label>
+  <label>Number of days<input id="g-len" type="number" value="${cfg.length}"></label>
+  <button data-a="savecfg">Save settings</button>
+  ${list.map(([id,m])=>`<div class="row"><span>${esc(m.name)}</span><button class="link" data-a="delmember" data-id="${id}">${confirmId===id?'Tap again to delete all their history':'Remove'}</button></div>`).join('')}
+ </div></details>`;
+ return h;
+}
+function memberHtml(id){
+ const m=members[id];if(!m){view='home';return homeHtml()}
+ const t=today(),ti=idx(t);
+ if(!selDate)selDate=ti<0?cfg.start:(ti>=cfg.length?addDays(cfg.start,cfg.length-1):t);
+ const d=selDate,di=idx(d),hs=habits(m),s=stats(m);
+ let h=`<div class="row"><button data-a="home">← Everyone</button><button class="link" data-a="setme" data-id="${id}">${me===id?'✓ This is me':'This is me'}</button></div>
+ <h1>${esc(m.name)}</h1><div class="sub">🔥 ${s.streak}-day streak · ${s.missed.length} missed</div>
+ <div class="card"><div class="row"><button data-a="prev" ${di<=0?'disabled':''}>‹</button>
+ <div style="text-align:center"><b>${nice(d)}</b><div class="sub">Day ${di+1} of ${cfg.length}${d===t?' · Today':''}</div></div>
+ <button data-a="next" ${di>=cfg.length-1?'disabled':''}>›</button></div>`;
+ for(const x of hs){
+  const v=val(m,x,d);let cls='',box='',sub='';
+  if(x.kind==='workout'){if(v===true){cls='on';box='✓'}else if(v==='rest'){cls='rest';box='R';sub='Rest day (1 per week)'}else sub='Tap once = done, twice = rest day'}
+  else if(x.kind==='weekly'){const c=weekCount(m,x,d);sub=`${c}/${x.max} used this week · tap when you do it`;if(v===true){cls=c>x.max?'':'on';box=c>x.max?'!':'✓'}}
+  else if(v===true){cls='on';box='✓'}
+  h+=`<button class="hab ${cls}" data-a="toggle" data-id="${id}" data-h="${x.id}"><span class="box">${box}</span><span>${esc(x.label)}${x.kind==='weekly'?' <small>(max '+x.max+'/week)</small>':''}${sub?'<small>'+sub+'</small>':''}</span></button>`;
+ }
+ h+=`<div class="chip ${complete(m,d)?'c-ok':'c-warn'}">${complete(m,d)?'✅ Day complete':'Day not complete yet'}</div></div>`;
+ h+=`<div class="card"><b>All days</b><div class="grid">`;
+ for(let i=0;i<cfg.length;i++){const dd=addDays(cfg.start,i);
+  const c=i>ti?'':(complete(m,dd)?'ok':(i<ti?'bad':''));
+  h+=`<button class="dot ${c} ${dd===t?'today':''}" data-a="goto" data-d="${dd}">${i+1}</button>`}
+ h+=`</div></div>`;
+ h+=`<div class="card gap"><b>My goals</b>
+  <label>My nutritional fast<div class="row"><input id="fast" value="${esc(m.fast||'')}" placeholder="e.g. No soda" style="flex:1"><button data-a="savefast" data-id="${id}">Save</button></div></label>
+  ${(m.custom||[]).map(c=>`<div class="row"><span>${esc(c.label)}${c.kind==='weekly'?' <span class="sub">(max '+c.max+'/week)</span>':''}</span><button class="link" data-a="delgoal" data-id="${id}" data-g="${c.id}">${confirmId===c.id?'Tap again to remove':'Remove'}</button></div>`).join('')||'<div class="sub">No personal goals yet.</div>'}
+  <input id="g-label" placeholder="New personal goal (e.g. Awake by 7am)">
+  <select id="g-kind"><option value="daily">Every day</option><option value="weekly">Limit per week (e.g. eating out)</option></select>
+  <input id="g-max" type="number" min="0" value="1" placeholder="Max per week (for limit goals)">
+  <button class="pri" data-a="addgoal" data-id="${id}">Add goal</button></div>`;
+ return h;
+}
+
+async function saveMember(id){try{await db.doc('members/'+id).set(members[id])}catch(e){alert('Could not save: '+((e&&(e.message||e.code))||'unknown error')+'. Make sure you have Contributor access to this page.')}}
+async function saveCfg(){try{await db.doc('config/main').set(cfg)}catch(e){alert('Could not save settings.')}}
+
+document.addEventListener('click',async e=>{
+ const el=e.target.closest('[data-a]');if(!el)return;
+ const a=el.dataset.a,id=el.dataset.id;
+ if(a==='setup'){
+  const names=$('#s-names').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  cfg={name:$('#s-name').value.trim()||'Bible Study Guys',start:$('#s-start').value||today(),length:+$('#s-len').value||75};
+  await saveCfg();
+  for(const n of names){const i=uid();members[i]={name:n,fast:'',custom:[],days:{}};await saveMember(i)}
+  render();
+ }else if(a==='open'){view=id;selDate=null;render();scrollTo(0,0)}
+ else if(a==='home'){view='home';render()}
+ else if(a==='prev'){selDate=addDays(selDate,-1);render()}
+ else if(a==='next'){selDate=addDays(selDate,1);render()}
+ else if(a==='goto'){selDate=el.dataset.d;render();scrollTo(0,0)}
+ else if(a==='setme'){me=id;try{localStorage.setItem('h75me',id)}catch(e){}render()}
+ else if(a==='toggle'){
+  const m=members[id],h=habits(m).find(x=>x.id===el.dataset.h);
+  m.days=m.days||{};const day={...(m.days[selDate]||{})};const v=day[h.id];
+  if(h.kind==='workout'){
+   const w=Math.floor(idx(selDate)/7);let restUsed=false;
+   for(let k=w*7;k<w*7+7;k++){const dd=addDays(cfg.start,k);if(dd!==selDate&&((m.days[dd]||{}).workout==='rest'))restUsed=true}
+   if(!v)day.workout=true;else if(v===true&&!restUsed)day.workout='rest';else delete day.workout;
+   if(v===true&&restUsed)alert('This week’s rest day is already used.');
+  }else{if(v)delete day[h.id];else day[h.id]=true}
+  m.days[selDate]=day;render();await saveMember(id);
+ }
+ else if(a==='savefast'){members[id].fast=$('#fast').value.trim();render();await saveMember(id)}
+ else if(a==='addgoal'){
+  const label=$('#g-label').value.trim();if(!label)return;
+  const kind=$('#g-kind').value,max=Math.max(0,parseInt($('#g-max').value||'1',10));
+  const m=members[id];m.custom=(m.custom||[]).concat([{id:'c'+Date.now().toString(36),label,kind,max}]);
+  render();await saveMember(id);
+ }
+ else if(a==='delgoal'){const g=el.dataset.g;if(confirmId!==g){confirmId=g;render();return}confirmId='';const m=members[id];m.custom=m.custom.filter(c=>c.id!==el.dataset.g);render();await saveMember(id)}
+ else if(a==='addmember'){const n=$('#n-name').value.trim();if(!n)return;const i=uid();members[i]={name:n,fast:'',custom:[],days:{}};render();await saveMember(i)}
+ else if(a==='delmember'){if(confirmId!==id){confirmId=id;render();return}confirmId='';delete members[id];render();try{await db.doc('members/'+id).delete()}catch(e){}}
+ else if(a==='savecfg'){cfg={name:$('#g-name').value.trim()||cfg.name,start:$('#g-start').value||cfg.start,length:+$('#g-len').value||cfg.length};render();await saveCfg()}
+});
+
+document.addEventListener('toggle',e=>{if(e.target&&e.target.tagName==='DETAILS')setOpen=e.target.open},true);
+function deferRender(){const ae=document.activeElement;if(ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName)){if(!pending){pending=true;ae.addEventListener('blur',()=>{pending=false;render()},{once:true})}}else render()}
+
+// ====== PASTE YOUR FIREBASE CONFIG HERE (see setup steps) ======
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCFDANYsvOGIun8Ac3xZj2DBIZr6GWNFk4",
+  authDomain: "holy75-5de7a.firebaseapp.com",
+  projectId: "holy75-5de7a",
+  storageBucket: "holy75-5de7a.firebasestorage.app",
+  messagingSenderId: "554955672085",
+  appId: "1:554955672085:web:2f96cb886d53b40a069c1c"
+};
+// ================================================================
+(async()=>{
+ try{
+  if(FIREBASE_CONFIG.apiKey==="PASTE_HERE")throw new Error('not configured');
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const fs=firebase.firestore();
+  db={
+   doc:p=>({set:d=>fs.doc(p).set(d),delete:()=>fs.doc(p).delete(),
+     onSnapshot:(ok,err)=>fs.doc(p).onSnapshot(s=>ok({exists:s.exists,data:()=>s.data()}),err)}),
+   collection:p=>({onSnapshot:(ok,err)=>fs.collection(p).onSnapshot(s=>ok({docs:s.docs.map(d=>({id:d.id,data:()=>d.data()}))}),err)})
+  };
+ }catch(e){db=null}
+ if(!db){ready=true;render();return}
+ db.doc('config/main').onSnapshot(s=>{cfg=s.exists?JSON.parse(JSON.stringify(s.data())):null;ready=true;deferRender()},()=>{ready=true;render()});
+ db.collection('members').onSnapshot(s=>{members={};s.docs.forEach(d=>{members[d.id]=JSON.parse(JSON.stringify(d.data()))});deferRender()},()=>{});
+})();
+</script>
+</body>
+</html>
